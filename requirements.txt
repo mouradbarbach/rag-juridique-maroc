@@ -1,8 +1,9 @@
-azure-ai-documentintelligence
+streamlit
 python-dotenv
-camel-tools
 langchain
-langchain-text-splitters
-tiktoken
+langchain-community
 langchain-openai
+langchain-classic
+faiss-cpu
+sentence-transformers
 edge-tts
