@@ -7,3 +7,4 @@ langchain-classic
 faiss-cpu
 sentence-transformers
 edge-tts
+torchvision
