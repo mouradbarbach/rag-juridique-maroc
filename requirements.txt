@@ -1,0 +1,7 @@
+azure-ai-documentintelligence
+python-dotenv
+camel-tools
+langchain
+langchain-text-splitters
+tiktoken
+langchain-openai
