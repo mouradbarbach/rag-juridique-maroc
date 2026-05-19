@@ -13,17 +13,15 @@ from langchain_classic.chains import create_retrieval_chain, create_history_awar
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 
 async def text_to_speech(text):
-    try:
-        clean_text = re.sub(r'[*#_`~]', '', text)
-        voice = "ar-MA-SalmaNeural"
-        communicate = edge_tts.Communicate(clean_text, voice)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_file:
-            tmp_path = tmp_file.name
-        await communicate.save(tmp_path)
-        return tmp_path
-    except Exception as e:
-        print(f"❌ Erreur f s-sawt: {e}")
-        return None
+    # N-n9iw l-ktaba mn romouz li kay-blokiw Salma
+    clean_text = text.replace("*", "").replace("#", "").replace("_", "").replace("~", "")
+    voice = "ar-MA-SalmaNeural"
+    communicate = edge_tts.Communicate(clean_text, voice)
+    
+    # N-sauvegardiw s-sawt f fichier w n-reddou l-masar dyalo
+    file_name = "salma_voice.mp3"
+    await communicate.save(file_name)
+    return file_name
 
 st.set_page_config(page_title="المساعد القانوني الذكي", page_icon="⚖️")
 st.markdown("<style>body, .stChatMessage, .stMarkdown { direction: rtl; text-align: right; } .stChatInputContainer { direction: ltr; }</style>", unsafe_allow_html=True)
@@ -71,28 +69,26 @@ for message in st.session_state.messages:
         # Hna n-gaddou l-historique b HTML bach y-ban mn l-imen (RTL)
         st.markdown(f"<div dir='rtl' style='text-align: right; font-size: 18px;'>{message['content']}</div>", unsafe_allow_html=True)
 
-if question := st.chat_input("بماذا يمكنني مساعدتك اليوم؟ (اكتب سؤالك)"):
+if question := st.chat_input("سولني على القانون..."):
+    # 1. Sou2al d l-mowatin
     st.session_state.messages.append({"role": "user", "content": question})
     with st.chat_message("user"):
-        # Hna s-sou2al d l-mowatin m9add
         st.markdown(f"<div dir='rtl' style='text-align: right; font-size: 18px;'>{question}</div>", unsafe_allow_html=True)
         
+    # 2. Jawab d l-Assistant w S-sawt
     with st.chat_message("assistant"):
         with st.spinner("جاري البحث في القوانين..."):
             response = rag_chain.invoke({"input": question, "chat_history": st.session_state.chat_history})
-            answer = response["answer"]
+            # KAN-KHEDMO B L-JAWAB RAW NICHEN
+            answer = response["answer"] 
             
-            # Hna l-jawab d l-Bot m9add mn l-imen
             st.markdown(f"<div dir='rtl' style='text-align: right; font-size: 18px;'>{answer}</div>", unsafe_allow_html=True)
             
-        # S-Sawt (Audio Output)
+        # N-fiyeqou Salma
         with st.spinner("جاري توليد الصوت 🔊..."):
-            try:
-                audio_path = asyncio.run(text_to_speech(answer))
-                if audio_path:
-                    st.audio(audio_path, format="audio/mp3")
-            except Exception as e:
-                st.warning("تعذر تشغيل الصوت حالياً.")
+            audio_file = asyncio.run(text_to_speech(answer))
+            if audio_file:
+                st.audio(audio_file, format="audio/mp3")
                 
     st.session_state.messages.append({"role": "assistant", "content": answer})
     st.session_state.chat_history.extend([("human", question), ("ai", answer)])
