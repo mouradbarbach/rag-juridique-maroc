@@ -25,29 +25,29 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ==========================================
+# 2. Jbed l-API Key dyal GitHub
+# ==========================================
 load_dotenv()
-os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", "")
+github_token = os.getenv("GITHUB_TOKEN", "")
 
 # ==========================================
-# 2. Fonction dyal Sawt (Salma) M9adda
+# 3. Fonction dyal Sawt (Salma) - M9adda l Streamlit
 # ==========================================
-def generate_audio_sync(text):
-    # N-7iydou r-romouz li kay-khab9ou s-sawt d Salma
+async def _generate_audio_async(text):
     clean_text = text.replace("*", "").replace("#", "").replace("_", "")
     communicate = edge_tts.Communicate(clean_text, "ar-MA-SalmaNeural")
-    
     tmp_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
-    
-    try:
-        asyncio.run(communicate.save(tmp_path))
-    except RuntimeError:
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(communicate.save(tmp_path))
-        
+    await communicate.save(tmp_path)
     return tmp_path
 
+def generate_audio_sync(text):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    return loop.run_until_complete(_generate_audio_async(text))
+
 # ==========================================
-# 3. RAG Pipeline
+# 4. RAG Pipeline (B GPT-4o dyal GitHub Azure)
 # ==========================================
 @st.cache_resource
 def load_rag_pipeline():
@@ -55,7 +55,13 @@ def load_rag_pipeline():
     vector_store = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
     retriever = vector_store.as_retriever(search_kwargs={"k": 3})
     
-    llm = ChatOpenAI(model="gpt-4o", temperature=0.3)
+    # Hna m-gadda nichen m3a GitHub Student Pack
+    llm = ChatOpenAI(
+        model="gpt-4o", 
+        temperature=0.3,
+        api_key=github_token,
+        base_url="https://models.inference.ai.azure.com"
+    )
     
     system_prompt = """
     أنت مساعد قانوني مغربي خبير. 
@@ -74,9 +80,9 @@ def load_rag_pipeline():
 rag_chain = load_rag_pipeline()
 
 # ==========================================
-# 4. L-Interface w l-Chat Loop
+# 5. L-Interface w l-Chat Loop
 # ==========================================
-st.markdown("<h1>⚖️ المساعد القانوني المغربي</h1>", unsafe_allow_html=True)
+st.markdown("<h1>⚖️ المساعد القانوني المغربي الصوتي</h1>", unsafe_allow_html=True)
 st.markdown("<p>مرحبا بك! كيفاش نقدر نعاونك في القانون المغربي؟</p>", unsafe_allow_html=True)
 
 if "messages" not in st.session_state:
@@ -86,12 +92,12 @@ if "chat_history" not in st.session_state:
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
-        st.write(message["content"])
+        st.markdown(f"<div dir='rtl' style='text-align:right; font-size:18px;'>{message['content']}</div>", unsafe_allow_html=True)
 
 if question := st.chat_input("سولني على القانون..."):
     st.session_state.messages.append({"role": "user", "content": question})
     with st.chat_message("user"):
-        st.write(question)
+        st.markdown(f"<div dir='rtl' style='text-align:right; font-size:18px;'>{question}</div>", unsafe_allow_html=True)
         
     with st.chat_message("assistant"):
         with st.spinner("جاري البحث في القوانين..."):
@@ -100,14 +106,14 @@ if question := st.chat_input("سولني على القانون..."):
                 "chat_history": st.session_state.chat_history
             })
             answer = response["answer"]
-            st.write(answer)
+            st.markdown(f"<div dir='rtl' style='text-align:right; font-size:18px;'>{answer}</div>", unsafe_allow_html=True)
             
         with st.spinner("جاري توليد الصوت 🔊..."):
             try:
                 audio_path = generate_audio_sync(answer)
                 st.audio(audio_path, format="audio/mp3")
             except Exception as e:
-                st.error("تعذر تشغيل الصوت حالياً.")
+                st.error(f"تعذر تشغيل الصوت: {e}")
                 
     st.session_state.messages.append({"role": "assistant", "content": answer})
     st.session_state.chat_history.extend([("human", question), ("ai", answer)])
