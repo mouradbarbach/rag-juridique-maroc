@@ -1,82 +1,98 @@
 import os
+import re
+import asyncio
+import tempfile
+import edge_tts
+import streamlit as st
 from dotenv import load_dotenv
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_classic.chains import create_retrieval_chain
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_classic.chains import create_retrieval_chain, create_history_aware_retriever
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 
-# Maktabat jdad bach n-gaddou l'3arbiya f l'terminal
-import arabic_reshaper
-from bidi.algorithm import get_display
+async def text_to_speech(text):
+    try:
+        clean_text = re.sub(r'[*#_`~]', '', text)
+        voice = "ar-MA-SalmaNeural"
+        communicate = edge_tts.Communicate(clean_text, voice)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_file:
+            tmp_path = tmp_file.name
+        await communicate.save(tmp_path)
+        return tmp_path
+    except Exception as e:
+        print(f"❌ Erreur f s-sawt: {e}")
+        return None
 
-def fix_arabic(text):
-    """Fonction bach t-lsse9 l'7ourouf w t-9leb l'ktaba mn Liser l-Limen"""
-    reshaped_text = arabic_reshaper.reshape(text)
-    bidi_text = get_display(reshaped_text)
-    return bidi_text
+st.set_page_config(page_title="المساعد القانوني الذكي", page_icon="⚖️")
+st.markdown("<style>body, .stChatMessage, .stMarkdown { direction: rtl; text-align: right; } .stChatInputContainer { direction: ltr; }</style>", unsafe_allow_html=True)
+st.title("⚖️ المساعد القانوني المغربي الصوتي")
 
-# 1. Njbdou l'Key dyal GitHub
-load_dotenv()
-github_token = os.getenv("GITHUB_TOKEN")
-
-if not github_token:
-    print("❌ L'Token dyal GitHub makaynch f .env!")
-    exit()
-
-# 2. n-chargiw l'Base de données FAISS w l'Embeddings
-print("🧠 Kan-fiye9ou l'Base de données l'9anouniya...")
-embeddings = HuggingFaceEmbeddings(model_name="intfloat/multilingual-e5-small")
-vector_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
-retriever = vector_db.as_retriever(search_kwargs={"k": 3})
-
-# 3. N-gadou l'LLM (GPT-4o L-Mjehed)
-print("🤖 Kan-rbtou m3a GPT-4o L-Mjehed...")
-llm = ChatOpenAI(
-    api_key=github_token,
-    base_url="https://models.inference.ai.azure.com", 
-    model="gpt-4o", 
-    temperature=0.1 
-)
-
-# 4. L'Prompt jdid m3a ta3limat d-logha
-system_prompt = (
-    "أنت مساعد قانوني مغربي ذكي ومحترف. "
-    "قاعدة هامة جداً: أجب دائماً بنفس اللغة أو اللهجة التي طُرح بها السؤال. "
-    "إذا سألك المواطن بالدارجة المغربية، أجب بالدارجة المغربية المبسطة والمفهومة. "
-    "إذا سألك بالفرنسية، أجب بالفرنسية. وإذا سألك بالعربية الفصحى، أجب بالفصحى.\n\n"
-    "استخدم فقط المعلومات القانونية التالية للإجابة على سؤال المواطن. "
-    "إذا لم تجد الإجابة في هذه المعلومات، قل 'عذراً، لم أجد هذه المعلومة في النصوص القانونية المتاحة' بنفس لغة السؤال، ولا تخترع أي معلومات من عندك.\n\n"
-    "المعلومات القانونية:\n"
-    "{context}"
-)
-
-prompt = ChatPromptTemplate.from_messages([
-    ("system", system_prompt),
-    ("human", "{input}")
-])
-
-# 5. N-jm3ou l'Pipeline (RAG)
-question_answer_chain = create_stuff_documents_chain(llm, prompt)
-rag_chain = create_retrieval_chain(retriever, question_answer_chain)
-
-# 6. Chat Loop (L'Interface f l'terminal)
-print("\n" + "="*50)
-print("⚖️  L'Assistant L'9anouni L'Maghribi Wajd! (Ktab 'q' bach tkhrej)")
-print("="*50 + "\n")
-
-while True:
-    question = input("👤 L'Mowatin: ")
-    if question.lower() == 'q':
-        print("👋 Bslama! L'Assistant kay-sed l'bureau dyalo.")
-        break
+@st.cache_resource
+def load_assistant():
+    load_dotenv()
+    embeddings = HuggingFaceEmbeddings(model_name="intfloat/multilingual-e5-small")
+    vector_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+    retriever = vector_db.as_retriever(search_kwargs={"k": 3})
     
-    print("⏳ Kay-9leb f l'9anoun...")
-    response = rag_chain.invoke({"input": question})
+    llm = ChatOpenAI(
+        api_key=os.environ.get("GITHUB_TOKEN"),
+        base_url="https://models.inference.ai.azure.com", 
+        model="gpt-4o",
+        temperature=0.1 
+    )
     
-    # KAN-GADDOU L'AFFICHAGE DYAL L'JAWAB
-    fixed_answer = fix_arabic(response['answer'])
-    
-    print(f"\n⚖️  L'Assistant:\n{fixed_answer}")
-    print("\n" + "-"*50 + "\n")
+    contextualize_q_prompt = ChatPromptTemplate.from_messages([
+        ("system", "قم بصياغة سؤال مستقل يمكن فهمه دون سجل الدردشة. لا تجب على السؤال، فقط أعد صياغته."),
+        MessagesPlaceholder("chat_history"),
+        ("human", "{input}"),
+    ])
+    history_aware_retriever = create_history_aware_retriever(llm, retriever, contextualize_q_prompt)
+
+    system_prompt = (
+        "أنت مساعد قانوني مغربي ذكي ومحترف. أجب دائماً بنفس اللغة أو اللهجة التي طُرح بها السؤال.\n"
+        "استخدم فقط المعلومات القانونية التالية للإجابة. إذا لم تجد الإجابة، قل 'عذراً، لم أجد هذه المعلومة في النصوص القانونية المتاحة' ولا تخترع أي معلومات.\n\n"
+        "المعلومات القانونية:\n{context}"
+    )
+    qa_prompt = ChatPromptTemplate.from_messages([("system", system_prompt), MessagesPlaceholder("chat_history"), ("human", "{input}")])
+    question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
+    return create_retrieval_chain(history_aware_retriever, question_answer_chain)
+
+rag_chain = load_assistant()
+
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = [] 
+if "messages" not in st.session_state:
+    st.session_state.messages = [] 
+
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        # Hna n-gaddou l-historique b HTML bach y-ban mn l-imen (RTL)
+        st.markdown(f"<div dir='rtl' style='text-align: right; font-size: 18px;'>{message['content']}</div>", unsafe_allow_html=True)
+
+if question := st.chat_input("بماذا يمكنني مساعدتك اليوم؟ (اكتب سؤالك)"):
+    st.session_state.messages.append({"role": "user", "content": question})
+    with st.chat_message("user"):
+        # Hna s-sou2al d l-mowatin m9add
+        st.markdown(f"<div dir='rtl' style='text-align: right; font-size: 18px;'>{question}</div>", unsafe_allow_html=True)
+        
+    with st.chat_message("assistant"):
+        with st.spinner("جاري البحث في القوانين..."):
+            response = rag_chain.invoke({"input": question, "chat_history": st.session_state.chat_history})
+            answer = response["answer"]
+            
+            # Hna l-jawab d l-Bot m9add mn l-imen
+            st.markdown(f"<div dir='rtl' style='text-align: right; font-size: 18px;'>{answer}</div>", unsafe_allow_html=True)
+            
+        # S-Sawt (Audio Output)
+        with st.spinner("جاري توليد الصوت 🔊..."):
+            try:
+                audio_path = asyncio.run(text_to_speech(answer))
+                if audio_path:
+                    st.audio(audio_path, format="audio/mp3")
+            except Exception as e:
+                st.warning("تعذر تشغيل الصوت حالياً.")
+                
+    st.session_state.messages.append({"role": "assistant", "content": answer})
+    st.session_state.chat_history.extend([("human", question), ("ai", answer)])
