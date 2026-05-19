@@ -35,7 +35,9 @@ github_token = os.getenv("GITHUB_TOKEN", "")
 # 3. Fonction dyal Sawt (Salma) - M9adda l Streamlit
 # ==========================================
 async def _generate_audio_async(text):
-    clean_text = text.replace("*", "").replace("#", "").replace("_", "")
+    # N-n9iw l-ktaba mn ga3 r-romouz li kay-7ebsou Salma (njmat, 3awared, d-stour jdad...)
+    clean_text = text.replace("*", "").replace("#", "").replace("_", "").replace("-", ".").replace("\n", " ")
+    
     communicate = edge_tts.Communicate(clean_text, "ar-MA-SalmaNeural")
     tmp_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
     await communicate.save(tmp_path)
