@@ -3,6 +3,7 @@ import asyncio
 import tempfile
 import streamlit as st
 import edge_tts
+import subprocess
 from dotenv import load_dotenv
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
@@ -44,9 +45,19 @@ async def _generate_audio_async(text):
     return tmp_path
 
 def generate_audio_sync(text):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    return loop.run_until_complete(_generate_audio_async(text))
+    # N-n9iw l-ktaba mn r-romouz w d-stour
+    clean_text = text.replace("*", "").replace("#", "").replace("_", "").replace("-", ".").replace('"', '').replace("'", "")
+    clean_text = " ".join(clean_text.splitlines())
+    
+    # N-creyiw fichier temporaire
+    tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    tmp_path = tmp_file.name
+    tmp_file.close()
+    
+    # N-lanciou edge-tts mn l-Console nichen (kay-t-jawez machakil Python)
+    subprocess.run(['edge-tts', '--voice', 'ar-MA-SalmaNeural', '--text', clean_text, '--write-media', tmp_path])
+    
+    return tmp_path
 
 # ==========================================
 # 4. RAG Pipeline (B GPT-4o dyal GitHub Azure)
